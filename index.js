@@ -17,6 +17,10 @@ if (missing.length) {
   throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
 }
 
+if (typeof fetch !== 'function') {
+  throw new Error('Global fetch API not available. Please run on Node.js 18 or later.');
+}
+
 const cadUrl = requiredEnv.CAD_URL.trim().replace(/\/+$/, '');
 
 const client = new Client({

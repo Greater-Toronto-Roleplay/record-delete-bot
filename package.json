@@ -4,6 +4,9 @@
   "description": "Discord bot performing Sonoran CAD lookups via HTTP.",
   "main": "index.js",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node index.js"
   },
