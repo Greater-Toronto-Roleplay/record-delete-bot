@@ -1,5 +1,15 @@
 {
+  "name": "record-delete-bot",
+  "version": "1.0.0",
+  "description": "Discord bot with Sonoran CAD lookup command.",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
-    "codex": "^0.2.3"
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "sonorancad": "^1.4.8"
   }
 }
