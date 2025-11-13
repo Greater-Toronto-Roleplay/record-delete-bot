@@ -1,0 +1,33 @@
+name: Auto Sync Branches
+
+on:
+  push:
+    branches:
+      - editing
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync staging <- editing
+        run: |
+          git checkout staging
+          git reset --hard origin/editing
+          git push origin staging --force
+
+      - name: Sync main <- staging
+        run: |
+          git checkout main
+          git reset --hard origin/staging
+          git push origin main --force
