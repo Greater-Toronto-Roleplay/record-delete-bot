@@ -1,16 +1,6 @@
 require('dotenv').config();
 
 const { Client, GatewayIntentBits, Partials, ChannelType } = require('discord.js');
-const SonoranCADModule = require('sonorancad');
-
-const SonoranCAD =
-  (SonoranCADModule && SonoranCADModule.SonoranCAD) ||
-  (SonoranCADModule && SonoranCADModule.default) ||
-  SonoranCADModule;
-
-if (typeof SonoranCAD !== 'function') {
-  throw new Error('Unable to load SonoranCAD client from the "sonorancad" package.');
-}
 
 const requiredEnv = {
   BOT_TOKEN: process.env.BOT_TOKEN,
@@ -27,13 +17,11 @@ if (missing.length) {
   throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
 }
 
-const cadConfig = {
-  url: process.env.CAD_URL,
-  apiId: process.env.CAD_API_ID,
-  apiKey: process.env.CAD_API_KEY
-};
+if (typeof fetch !== 'function') {
+  throw new Error('Global fetch API not available. Please run on Node.js 18 or later.');
+}
 
-const cadClient = new SonoranCAD(cadConfig);
+const cadUrl = requiredEnv.CAD_URL.trim().replace(/\/+$/, '');
 
 const client = new Client({
   intents: [
@@ -44,6 +32,63 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
+function buildLookupBody(command, args) {
+  const baseBody = {
+    types: [],
+    plate: '',
+    partial: false,
+    first: '',
+    last: '',
+    mi: ''
+  };
+
+  if (command === '!plate') {
+    const plate = args.join(' ').trim();
+    if (!plate) {
+      throw new Error('Please provide a plate. Example: `!plate ABC123`.');
+    }
+
+    return { ...baseBody, plate };
+  }
+
+  const [firstName, ...lastParts] = args;
+  const lastName = lastParts.join(' ').trim();
+
+  if (!firstName || !lastName) {
+    throw new Error('Please provide both first and last name. Example: `!lookup John Doe`.');
+  }
+
+  return {
+    ...baseBody,
+    first: firstName,
+    last: lastName
+  };
+}
+
+async function performLookup(body) {
+  const response = await fetch(`${cadUrl}/emergency/lookup`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-ID': requiredEnv.CAD_API_ID,
+      'X-API-KEY': requiredEnv.CAD_API_KEY
+    },
+    body: JSON.stringify(body)
+  });
+
+  const raw = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Lookup failed with status ${response.status}: ${raw || response.statusText}`);
+  }
+
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch (parseError) {
+    return raw || '{}';
+  }
+}
+
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
@@ -52,39 +97,37 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   if (!message.inGuild() || message.channel?.type === ChannelType.DM) return;
 
-  const prefix = '!lookup';
-  if (!message.content.toLowerCase().startsWith(prefix)) {
+  const content = message.content.trim();
+  const lowered = content.toLowerCase();
+
+  const commands = ['!lookup', '!plate'];
+  const command = commands.find(
+    (cmd) => lowered === cmd || lowered.startsWith(`${cmd} `)
+  );
+
+  if (!command) {
     return;
   }
 
-  const nameQuery = message.content.slice(prefix.length).trim();
-  if (!nameQuery) {
-    await message.reply('Please provide a name to look up. Example: `!lookup John Doe`');
-    return;
-  }
+  const args = content.slice(command.length).trim().split(/\s+/).filter(Boolean);
 
   await message.channel.sendTyping();
 
   try {
-    if (typeof cadClient.lookup !== 'function') {
-      throw new Error('The Sonoran CAD client does not provide a lookup function.');
+    const requestBody = buildLookupBody(command, args);
+    let formatted = await performLookup(requestBody);
+
+    const MAX_LENGTH = 1990; // Leave room for code block fencing
+    if (formatted.length > MAX_LENGTH) {
+      formatted = `${formatted.slice(0, MAX_LENGTH - 3)}...`;
     }
 
-    const result = await cadClient.lookup('NAME', { name: nameQuery });
-    const json = JSON.stringify(result, null, 2) || '{}';
-
-    const MAX_LENGTH = 1990; // Leave room for code block fences
-    let payload = json;
-    if (payload.length > MAX_LENGTH) {
-      payload = payload.slice(0, MAX_LENGTH - 3) + '...';
-    }
-
-    await message.reply(`\n\u200b\n\`\`\`json\n${payload}\n\`\`\``);
+    await message.reply(`\`\`\`json\n${formatted}\n\`\`\``);
   } catch (error) {
     console.error('Lookup error:', error);
     const description = error?.message || 'Unknown error occurred while performing lookup.';
-    await message.reply(`Failed to complete lookup: ${description}`);
+    await message.reply(description);
   }
 });
 
-client.login(process.env.BOT_TOKEN);
+client.login(requiredEnv.BOT_TOKEN);
